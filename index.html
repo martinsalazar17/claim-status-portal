@@ -3,79 +3,42 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#ffffff">
 <title>SGPA Claim Status Portal — USC</title>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
   html, body {
     margin: 0;
     padding: 0;
     height: 100%;
     overflow: hidden;
-    background: linear-gradient(135deg, #1e3a5f 0%, #234878 100%);
-    font-family: 'DM Sans', Arial, sans-serif;
+    background: #ffffff;
   }
 
-  /* ── LOADER ── */
+  /* ── VIDEO LOADER ── */
   #loader {
     position: fixed;
     inset: 0;
+    z-index: 2;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
-    color: #fff;
-    z-index: 2;
+    background: #ffffff;
     transition: opacity 0.5s cubic-bezier(.16,.8,.24,1),
-                filter  0.5s cubic-bezier(.16,.8,.24,1),
-                transform 0.5s cubic-bezier(.16,.8,.24,1);
+                filter  0.5s cubic-bezier(.16,.8,.24,1);
   }
   #loader.loader-hide {
     opacity: 0;
     filter: blur(6px);
-    transform: scale(1.03);
     pointer-events: none;
   }
-
-  #loader-mark {
-    width: 52px; height: 52px;
-    border-radius: 14px;
-    background: #fff;
-    display: flex; align-items: center; justify-content: center;
-    overflow: hidden;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-    opacity: 0;
-    transform: translateY(10px);
-    animation: markIn 0.6s cubic-bezier(.16,.8,.24,1) 0.1s forwards;
+  #loader-video {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    background: #ffffff;
+    /* Makes near-white video pixels blend into the white page, hiding any box edges */
+    mix-blend-mode: multiply;
   }
-  #loader-mark img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
-  @keyframes markIn { to { opacity: 1; transform: translateY(0); } }
-
-  #loader-title {
-    font-family: 'Sora', sans-serif;
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    opacity: 0;
-    transform: translateY(8px);
-    animation: markIn 0.6s cubic-bezier(.16,.8,.24,1) 0.22s forwards;
-  }
-
-  #loader-dots {
-    display: flex;
-    gap: 6px;
-    opacity: 0;
-    transform: translateY(8px);
-    animation: markIn 0.6s cubic-bezier(.16,.8,.24,1) 0.34s forwards;
-  }
-  #loader-dots span {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: #f0c040;
-    animation: bounce 1.1s ease-in-out infinite;
-  }
-  #loader-dots span:nth-child(2) { animation-delay: 0.15s; }
-  #loader-dots span:nth-child(3) { animation-delay: 0.3s; }
-  @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 30% { transform: translateY(-6px); opacity: 1; } }
 
   /* ── APP FRAME ── */
   #app-frame {
@@ -99,48 +62,85 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    #loader, #app-frame, #loader-mark, #loader-title, #loader-dots {
+    #loader, #app-frame {
       transition: none !important;
-      animation: none !important;
-      opacity: 1 !important;
       filter: none !important;
       transform: none !important;
     }
+    #loader-video { display: none; }
   }
 </style>
+
+<script>
+  // The app is revealed only when BOTH are true:
+  //   1) the video has finished (or failed / was skipped), and
+  //   2) the GAS app has finished loading in the hidden iframe.
+  var VIDEO_MAX_WAIT_MS = 8000;   // never hold the student longer than this for the video
+  var HARD_TIMEOUT_MS   = 12000;  // reveal regardless (slow network safety net)
+
+  var frameLoaded = false;
+  var videoDone   = false;
+  var revealed    = false;
+
+  function revealApp() {
+    if (revealed) return;
+    revealed = true;
+    document.getElementById('app-frame').classList.add('frame-ready');
+    var loader = document.getElementById('loader');
+    loader.classList.add('loader-hide');
+    setTimeout(function () {
+      loader.style.display = 'none';
+      var v = document.getElementById('loader-video');
+      if (v) { v.pause(); }
+    }, 600);
+  }
+
+  function tryReveal() {
+    if (frameLoaded && videoDone) revealApp();
+  }
+
+  function onFrameLoad() { frameLoaded = true; tryReveal(); }
+  function onVideoDone() { videoDone = true;   tryReveal(); }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var v = document.getElementById('loader-video');
+    var reduceMotion = window.matchMedia &&
+                       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!v || reduceMotion) { onVideoDone(); return; }
+
+    v.addEventListener('ended', onVideoDone);
+    v.addEventListener('error', onVideoDone);   // file missing / unsupported -> skip video
+
+    // Autoplay can be blocked (e.g. iOS Low Power Mode). If so, skip straight to the app.
+    var p = v.play();
+    if (p && typeof p.catch === 'function') p.catch(onVideoDone);
+
+    setTimeout(onVideoDone, VIDEO_MAX_WAIT_MS);
+  });
+
+  setTimeout(revealApp, HARD_TIMEOUT_MS);
+</script>
 </head>
 <body>
 
   <div id="loader">
-    <div id="loader-mark">
-      <img src="https://iili.io/CrEw6dP.md.jpg" alt="USC logo">
-    </div>
-    <div id="loader-title">Loading Claim Status Portal</div>
-    <div id="loader-dots"><span></span><span></span><span></span></div>
+    <video id="loader-video"
+           src="loading.mp4"
+           muted
+           playsinline
+           autoplay
+           preload="auto"
+           aria-hidden="true"></video>
   </div>
 
   <iframe
     id="app-frame"
-    src="https://script.google.com/macros/s/AKfycbycy-VACC4-hm9VIACcQCyUCasXDY0_EbX-3DWUltRd-fUqGzATwFyw3DXAVS0OwP-7/exec"
+    src="https://script.google.com/macros/s/AKfycbwVKASYEfBfuNT8ndlvlGmXBxlWOkv8O1MN1aa6TQDIBntGzDjdvkrYJUqYyYhrNrVOyg/exec"
     title="SGPA Claim Status Portal"
     allow="clipboard-write"
-    onload="revealApp()">
+    onload="onFrameLoad()">
   </iframe>
-
-  <script>
-    var revealed = false;
-    function revealApp() {
-      if (revealed) return;
-      revealed = true;
-      document.getElementById('app-frame').classList.add('frame-ready');
-      var loader = document.getElementById('loader');
-      loader.classList.add('loader-hide');
-      setTimeout(function () { loader.style.display = 'none'; }, 550);
-    }
-    // Safety net: if the iframe's onload never fires (slow network, etc.),
-    // reveal anyway after 12s rather than leaving the loader stuck forever.
-    setTimeout(revealApp, 12000);
-  </script>
 
 </body>
 </html>
